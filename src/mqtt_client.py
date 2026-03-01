@@ -136,7 +136,7 @@ def heartbeat():
                     "epoch": int(time.time())
                 }
 
-                topic = f"farm/{farm_id}/heartbeat"
+                topic = f"farm/{farm_id}/TimeSync"
                 mqtt_client.publish(topic, json.dumps(payload), qos=0)
                 print(f"✅ Heartbeat sent to {topic} | Local Time: {local_now.isoformat()}")
                 time.sleep(0.1)  # Small delay between heartbeats to different farms
