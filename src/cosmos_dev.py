@@ -1,0 +1,151 @@
+# import os
+# import time
+# from azure.cosmos import CosmosClient, exceptions
+# from src import config
+
+
+# COSMOS_ENDPOINT = config.COSMOS_ENDPOINT
+# COSMOS_PRIMARY_KEY = config.COSMOS_PRIMARY_KEY
+# DATABASE_NAME = config.COSMOS_DATABASE_NAME
+
+# SENSOR_CONTAINER_NAME = config.COSMOS_SENSOR_CONTAINER
+# ACTUATOR_CONTAINER_NAME = config.COSMOS_ACTUATOR_CONTAINER
+
+# if not all([COSMOS_ENDPOINT, COSMOS_PRIMARY_KEY, DATABASE_NAME]):
+#     raise RuntimeError(" Cosmos ENV variables missing")
+
+# cosmos_client = CosmosClient(
+#     COSMOS_ENDPOINT,
+#     credential=COSMOS_PRIMARY_KEY
+# )
+
+# database = cosmos_client.get_database_client(DATABASE_NAME)
+
+# sensor_container = database.get_container_client(SENSOR_CONTAINER_NAME)
+# actuator_container = database.get_container_client(ACTUATOR_CONTAINER_NAME)
+
+
+# def store_to_cosmos(device_id: str, device_type:str ,payload: dict, retries: int = 3) -> bool:
+
+
+#     try:
+#         device_id = payload.get("Device_Id")
+
+#         if not device_type or not device_id:
+#             print("Missing type or Device_Id, skipping Cosmos")
+#             return False
+
+#         # Decide container
+#         if device_type == "sensor":
+#             container = sensor_container
+#         elif device_type == "actuator":
+#             container = actuator_container
+#         else:
+#             print(f"Unknown device type: {device_type}")
+#             return False
+
+#         payload["id"] = payload.get(
+#             "Packet_Id",
+#             f"{device_id}_{int(time.time())}"
+#         )
+
+#         payload["cosmos_ts"] = int(time.time())
+
+
+#         for attempt in range(1, retries + 1):
+#             try:
+#                 result= container.upsert_item(payload)
+#                 print(
+#                     f"Cosmos stored | type={device_type} | id={payload['id']}"
+#                 )
+#                 print("Returned by upsert_item:", result)
+#                 return True
+
+#             except exceptions.CosmosHttpResponseError as e:
+#                 print(
+#                     f"Cosmos error (attempt {attempt}/{retries}): {e.message}"
+#                 )
+#                 time.sleep(2 ** attempt)
+
+#         print("Cosmos write failed after retries")
+#         return False
+
+#     except Exception as e:
+#         print(f"Unexpected Cosmos error: {e}")
+#         return False
+
+
+
+import time
+from pymongo import MongoClient, errors
+from src import config
+
+
+# Mongo Config (add these in your config)
+MONGO_URI = config.MONGO_URI
+MONGO_DATABASE_NAME = config.MONGO_DATABASE_NAME
+
+SENSOR_COLLECTION_NAME = config.MONGO_SENSOR_COLLECTION
+ACTUATOR_COLLECTION_NAME = config.MONGO_ACTUATOR_COLLECTION
+
+if not all([MONGO_URI, MONGO_DATABASE_NAME]):
+    raise RuntimeError("Mongo ENV variables missing")
+
+
+
+mongo_client = MongoClient(MONGO_URI)
+database = mongo_client[MONGO_DATABASE_NAME]
+
+sensor_collection = database[SENSOR_COLLECTION_NAME]
+actuator_collection = database[ACTUATOR_COLLECTION_NAME]
+
+
+def store_to_mongo(device_id: str, device_type: str, payload: dict, retries: int = 3) -> bool:
+    try:
+        device_id = payload.get("Device_Id")
+
+        if not device_type or not device_id:
+            print("Missing type or Device_Id, skipping Mongo")
+            return False
+
+        # Decide collection
+        if device_type == "sensor":
+            collection = sensor_collection
+        elif device_type == "actuator":
+            collection = actuator_collection
+        else:
+            print(f"Unknown device type: {device_type}")
+            return False
+
+        # Generate ID (similar to Cosmos logic)
+        doc_id = payload.get(
+            "Packet_Id",
+            f"{device_id}_{int(time.time())}"
+        )
+
+        payload["_id"] = doc_id
+        payload["mongo_ts"] = int(time.time())
+
+        for attempt in range(1, retries + 1):
+            try:
+                # Upsert behavior
+                result = collection.replace_one(
+                    {"_id": doc_id},
+                    payload,
+                    upsert=True
+                )
+
+                print(f"Mongo stored | type={device_type} | id={doc_id}")
+                print("Returned by replace_one:", result.raw_result)
+                return True
+
+            except errors.PyMongoError as e:
+                print(f"Mongo error (attempt {attempt}/{retries}): {str(e)}")
+                time.sleep(2 ** attempt)
+
+        print("Mongo write failed after retries")
+        return False
+
+    except Exception as e:
+        print(f"Unexpected Mongo error: {e}")
+        return False
