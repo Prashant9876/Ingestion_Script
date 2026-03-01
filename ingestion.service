@@ -1,0 +1,15 @@
+[Unit]
+Description=MQTT Redis Mongo Ingestion Service
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/Ingestion_Script_folder/Ingestion_Script_1
+EnvironmentFile=/opt/Ingestion_Script_folder/Ingestion_Script_1/.env
+ExecStart=/opt/Ingestion_Script_folder/.venv/bin/python /opt/Ingestion_Script_folder/Ingestion_Script_1/main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
