@@ -2,7 +2,7 @@ import redis
 import os
 import time
 import json
-from src import config
+from src import config, cosmos_dev
 
 REDIS_HOST = config.REDIS_HOST
 REDIS_PORT = int(config.REDIS_PORT)
@@ -82,3 +82,56 @@ def store_device_data(device_id, payload, type,farm_Id):
 
 
 
+
+def check_and_update_device_config(mqtt_payload, farm_Id: str):
+
+    try:
+
+        MAC_ID = mqtt_payload.get("MAC_ID")
+        IP = mqtt_payload.get("IP")
+        CHIP_No = mqtt_payload.get("CHIP_No")
+        DN = mqtt_payload.get("DN")
+        Device_Id = mqtt_payload.get("Device_Id")
+
+          # can be dynamic if needed
+
+        redis_key = f"Device_Config_Details:{farm_Id}:{Device_Id}"
+
+        # Get existing JSON
+        existing_data = redis_client.json().get(redis_key)
+
+        if not existing_data:
+            redis_client.json().set(redis_key, "$", {
+                "MAC_ID": MAC_ID,
+                "IP": IP,
+                "CHIP_No": CHIP_No,
+                "DN": DN
+            })
+
+            cosmos_dev.updatemongo_config(Device_Id, farm_Id, mqtt_payload)
+
+            print("✅ New device config stored")
+            return
+
+    
+        if ( existing_data.get("MAC_ID") == MAC_ID and
+            existing_data.get("IP") == IP and
+            existing_data.get("CHIP_No") == CHIP_No and
+            existing_data.get("DN") == DN
+        ):
+            print("✅ No change detected")
+            return
+
+        # Update full JSON (simpler & faster)
+        redis_client.json().set(redis_key, "$", {
+            "MAC_ID": MAC_ID,
+            "IP": IP,
+            "CHIP_No": CHIP_No,
+            "DN": DN
+        })
+        cosmos_dev.updatemongo_config(Device_Id, farm_Id, mqtt_payload)
+
+        print("🔄 Device config updated")
+
+    except Exception as e:
+        print("❌ Error check_and_update_device_config:", e)
