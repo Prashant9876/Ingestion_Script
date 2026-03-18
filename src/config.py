@@ -31,8 +31,10 @@ MONGO_DATABASE_NAME = os.getenv("MONGO_DATABASE_NAME")
 MONGO_SENSOR_COLLECTION = os.getenv("MONGO_SENSOR_COLLECTION")
 MONGO_ACTUATOR_COLLECTION = os.getenv("MONGO_ACTUATOR_COLLECTION")  
 
-
+IOT_Device_Data_Database = os.getenv("IOT_Device_Data_Database")
+IOT_Device_INFO_Database = os.getenv("IOT_Device_INFO_Database")
 #timezone   
+
 TIMEZONE_NAME = os.getenv("TIMEZONE", "UTC")  # default UTC
 
 

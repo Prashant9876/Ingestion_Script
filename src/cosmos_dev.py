@@ -76,28 +76,39 @@
 
 
 
-import time
+import time, json
 from pymongo import MongoClient, errors
 from src import config
+import ast
 
 
 # Mongo Config (add these in your config)
 MONGO_URI = config.MONGO_URI
 MONGO_DATABASE_NAME = config.MONGO_DATABASE_NAME
 
+IOT_Device_Data_Database = config.IOT_Device_Data_Database
+IOT_Device_INFO_Database = config.IOT_Device_INFO_Database
+
 SENSOR_COLLECTION_NAME = config.MONGO_SENSOR_COLLECTION
 ACTUATOR_COLLECTION_NAME = config.MONGO_ACTUATOR_COLLECTION
 
-if not all([MONGO_URI, MONGO_DATABASE_NAME]):
+if not all([MONGO_URI, IOT_Device_Data_Database, IOT_Device_INFO_Database , SENSOR_COLLECTION_NAME, ACTUATOR_COLLECTION_NAME]):
     raise RuntimeError("Mongo ENV variables missing")
 
 
 
 mongo_client = MongoClient(MONGO_URI)
-database = mongo_client[MONGO_DATABASE_NAME]
+IoT_Device_database = mongo_client[IOT_Device_Data_Database]      # this db is for  storing sensor and actuator data in mongodb
+IOT_Device_Info_database = mongo_client[IOT_Device_INFO_Database]   # this database is for storing device info in mongodb
 
-sensor_collection = database[SENSOR_COLLECTION_NAME]
-actuator_collection = database[ACTUATOR_COLLECTION_NAME]
+
+sensor_collection = IoT_Device_database[SENSOR_COLLECTION_NAME]         # sensor database
+actuator_collection = IoT_Device_database[ACTUATOR_COLLECTION_NAME]        # actuator database
+
+# IoT_Device_Info_collection = IOT_Device_Info_database["Device_Info"]  # Collection for device info      
+
+
+
 
 
 def store_to_mongo(device_id: str, device_type: str, payload: dict, retries: int = 3) -> bool:
@@ -149,3 +160,39 @@ def store_to_mongo(device_id: str, device_type: str, payload: dict, retries: int
     except Exception as e:
         print(f"Unexpected Mongo error: {e}")
         return False
+    
+
+def updatemongo_config(Device_Id, farm_Id, mqtt_payload):
+    global IOT_Device_INFO_Database
+    try:
+        print("🔍 Device_Id:", Device_Id, type(Device_Id))
+
+        if not isinstance(Device_Id, str):
+            print("❌ Invalid Device_Id")
+            return
+
+        data = mqtt_payload
+
+        if not isinstance(data, dict):
+            print("❌ Payload is not dict")
+            return
+
+        data["Device_Id"] = Device_Id
+
+        print("🔎 FINAL DATA:", data)
+
+        collection = IOT_Device_Info_database[str(farm_Id)]
+
+        result = collection.update_one(
+            {"Device_Id": Device_Id},
+            {"$set": data},
+            upsert=True
+        )
+
+        if result.matched_count > 0:
+            print("🔄 Device updated in MongoDB")
+        elif result.upserted_id:
+            print("✅ New device inserted in MongoDB")
+
+    except Exception as e:
+        print("❌ Final Error:", e)

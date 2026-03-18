@@ -96,6 +96,11 @@ def on_message(client, userdata, msg):
         #     payload["type"] = "robot"
         #     payload["timestamp"] = datetime.now(timezone.utc).isoformat()
         #     payload["farm_id"] = farm_id  # Example additional field for robots
+
+        elif topic_type == "Info":
+           redis_client.check_and_update_device_config(payload, farm_id)   
+           return 
+
         else:
             print(f"Topic type {topic_type} not recognized")
             return
