@@ -115,10 +115,15 @@ apis_collection =IoT_Device_database[API_COLLECTION_NAME]             # API coll
 
 def store_to_mongo(device_id: str, device_type: str, payload: dict, retries: int = 3) -> bool:
     try:
-        device_id = payload.get("Device_Id")
+        # Accept the payload keys used by different producers without forcing a schema change.
+        device_id = (
+            payload.get("Device_Id")
+            or payload.get("DeviceID")
+            or payload.get("DeviceId")
+        )
 
         if not device_type or not device_id:
-            print("Missing type or Device_Id, skipping Mongo")
+            print("Missing type or device identifier, skipping Mongo")
             return False
 
         # Decide collection
