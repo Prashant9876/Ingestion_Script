@@ -91,6 +91,7 @@ IOT_Device_INFO_Database = config.IOT_Device_INFO_Database
 
 SENSOR_COLLECTION_NAME = config.MONGO_SENSOR_COLLECTION
 ACTUATOR_COLLECTION_NAME = config.MONGO_ACTUATOR_COLLECTION
+API_COLLECTION_NAME = config.MONGO_API_COLLECTION
 
 if not all([MONGO_URI, IOT_Device_Data_Database, IOT_Device_INFO_Database , SENSOR_COLLECTION_NAME, ACTUATOR_COLLECTION_NAME]):
     raise RuntimeError("Mongo ENV variables missing")
@@ -102,8 +103,9 @@ IoT_Device_database = mongo_client[IOT_Device_Data_Database]      # this db is f
 IOT_Device_Info_database = mongo_client[IOT_Device_INFO_Database]   # this database is for storing device info in mongodb
 
 
-sensor_collection = IoT_Device_database[SENSOR_COLLECTION_NAME]         # sensor database
-actuator_collection = IoT_Device_database[ACTUATOR_COLLECTION_NAME]        # actuator database
+sensor_collection = IoT_Device_database[SENSOR_COLLECTION_NAME]         # sensor Collection
+actuator_collection = IoT_Device_database[ACTUATOR_COLLECTION_NAME]        # actuator collection
+apis_collection =IoT_Device_database[API_COLLECTION_NAME]             # API collection (using same as sensor for now)
 
 # IoT_Device_Info_collection = IOT_Device_Info_database["Device_Info"]  # Collection for device info      
 
@@ -124,6 +126,8 @@ def store_to_mongo(device_id: str, device_type: str, payload: dict, retries: int
             collection = sensor_collection
         elif device_type == "actuator":
             collection = actuator_collection
+        elif device_type == "APIs":
+            collection = apis_collection
         else:
             print(f"Unknown device type: {device_type}")
             return False
