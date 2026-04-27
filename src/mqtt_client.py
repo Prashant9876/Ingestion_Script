@@ -100,7 +100,10 @@ def on_message(client, userdata, msg):
         elif topic_type == "Info":
            redis_client.check_and_update_device_config(payload, farm_id)   
            return 
-
+        elif topic_type == "api":
+            payload["farm_id"] = farm_id
+            cosmos_dev.store_to_mongo("Backend_API", "APIs", payload)
+            return
         else:
             print(f"Topic type {topic_type} not recognized")
             return
@@ -162,7 +165,6 @@ def heartbeat():
 # ========================
 # MQTT STARTER
 # ========================
-
 def start_mqtt():
     global mqtt_client, last_refresh
 
