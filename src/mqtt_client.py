@@ -87,10 +87,20 @@ def on_message(client, userdata, msg):
         if topic_type == "sensor":
             payload["type"] = "sensor"
             payload["timestamp"] = datetime.now(timezone.utc).isoformat()
+            payload["Ist_timestamp"] = datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
             payload["farm_id"] = farm_id
+
+            if (farm_id == "120" and device_id == "IFNSD1200000001" ):
+                EC_val= payload.get("EC Sensor")
+                ph_val = payload.get("pH Sensor")
+                if EC_val == 0 or ph_val == 0:
+                    print(f"⚠️ Invalid sensor data from {device_id} in farm {farm_id}. EC: {EC_val}, pH: {ph_val}")
+                    return  
+
         elif topic_type in {"actuator", "irrigation", "fertigation"}:
             payload["type"] = "actuator"
             payload["timestamp"] = datetime.now(timezone.utc).isoformat()
+            payload["Ist_timestamp"] = datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
             payload["farm_id"] = farm_id  # Example additional field for actuators
         # elif topic_type == "robot":
         #     payload["type"] = "robot"
