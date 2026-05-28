@@ -93,9 +93,15 @@ def on_message(client, userdata, msg):
             if (farm_id == "120" and device_id == "IFNSD1200000001" ):
                 EC_val= payload.get("EC Sensor")
                 ph_val = payload.get("pH Sensor")
-                if EC_val == 0 or ph_val == 0:
+                cases = payload.get("cases")
+                
+                if EC_val == 0 or ph_val == 0 :
                     print(f"⚠️ Invalid sensor data from {device_id} in farm {farm_id}. EC: {EC_val}, pH: {ph_val}")
-                    return  
+                    return
+                  
+                if cases in ["before", "after"]:
+                        cosmos_dev.store_to_mongo(device_id, payload["type"], payload)
+                        return
 
         elif topic_type in {"actuator", "irrigation", "fertigation"}:
             payload["type"] = "actuator"
@@ -110,7 +116,7 @@ def on_message(client, userdata, msg):
         elif topic_type == "Info":
            redis_client.check_and_update_device_config(payload, farm_id)   
            return 
-        elif topic_type == "api":
+        elif topic_type == "api" or topic_type == "SSub":
             payload["farm_id"] = farm_id
             cosmos_dev.store_to_mongo("Backend_API", "APIs", payload)
             return
