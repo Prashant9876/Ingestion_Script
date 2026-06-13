@@ -8,4 +8,3 @@ if __name__ == "__main__":
     print("🚀 MQTT → Redis → Cosmos service starting")
     start_mqtt()
 #
-

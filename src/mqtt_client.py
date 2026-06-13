@@ -90,6 +90,19 @@ def on_message(client, userdata, msg):
             payload["Ist_timestamp"] = datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
             payload["farm_id"] = farm_id
 
+            if farm_id == "120" and device_id == "IFTHC1200000001":
+                humidity = payload.get("Humidity")
+
+                if isinstance(humidity, (int, float)):
+                    payload["Humidity"] = round(humidity + 30, 2)
+                    print(
+                        f"Humidity corrected: {humidity} → "
+                        f"{payload['Humidity']}"
+                    )
+                else:
+                    print("Humidity key is missing or has an invalid value")
+
+
             if (farm_id == "120" and device_id == "IFNSD1200000001" ):
                 EC_val= payload.get("EC Sensor")
                 ph_val = payload.get("pH Sensor")
