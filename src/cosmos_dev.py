@@ -92,8 +92,17 @@ IOT_Device_INFO_Database = config.IOT_Device_INFO_Database
 SENSOR_COLLECTION_NAME = config.MONGO_SENSOR_COLLECTION
 ACTUATOR_COLLECTION_NAME = config.MONGO_ACTUATOR_COLLECTION
 API_COLLECTION_NAME = config.MONGO_API_COLLECTION
+KEEPALIVE_COLLECTION_NAME = config.MONGO_KEEPALIVE_COLLECTION
 
-if not all([MONGO_URI, IOT_Device_Data_Database, IOT_Device_INFO_Database , SENSOR_COLLECTION_NAME, ACTUATOR_COLLECTION_NAME]):
+if not all([
+    MONGO_URI,
+    IOT_Device_Data_Database,
+    IOT_Device_INFO_Database,
+    SENSOR_COLLECTION_NAME,
+    ACTUATOR_COLLECTION_NAME,
+    API_COLLECTION_NAME,
+    KEEPALIVE_COLLECTION_NAME,
+]):
     raise RuntimeError("Mongo ENV variables missing")
 
 
@@ -106,10 +115,14 @@ IOT_Device_Info_database = mongo_client[IOT_Device_INFO_Database]   # this datab
 sensor_collection = IoT_Device_database[SENSOR_COLLECTION_NAME]         # sensor Collection
 actuator_collection = IoT_Device_database[ACTUATOR_COLLECTION_NAME]        # actuator collection
 apis_collection =IoT_Device_database[API_COLLECTION_NAME]             # API collection (using same as sensor for now)
+keepalive_collection = IoT_Device_database[KEEPALIVE_COLLECTION_NAME]   # Keepalive collection
 
 # IoT_Device_Info_collection = IOT_Device_Info_database["Device_Info"]  # Collection for device info      
 
-
+keepalive_collection.create_index(
+    "createdAt",
+    expireAfterSeconds=3 * 24 * 60 * 60
+)
 
 
 
@@ -133,6 +146,8 @@ def store_to_mongo(device_id: str, device_type: str, payload: dict, retries: int
             collection = actuator_collection
         elif device_type == "APIs":
             collection = apis_collection
+        elif device_type == "Keepalive":
+            collection = keepalive_collection
         else:
             print(f"Unknown device type: {device_type}")
             return False

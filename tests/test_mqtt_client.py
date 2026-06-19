@@ -3,6 +3,7 @@ import json
 import sys
 import types
 import unittest
+from datetime import datetime, timezone
 
 
 def _load_mqtt_module(allowed_farms):
@@ -102,6 +103,49 @@ class MqttClientTests(unittest.TestCase):
     def test_on_message_ignores_invalid_topic(self):
         mqtt_module, redis_calls, mongo_calls = _load_mqtt_module({"118": "UTC"})
         msg = _Msg("farm/118", {"Device_Id": "dev-4"})
+
+        mqtt_module.on_message(None, None, msg)
+
+        self.assertEqual(redis_calls, [])
+        self.assertEqual(mongo_calls, [])
+
+    def test_sensor_keepalive_stores_once_in_mongo_with_ttl_datetime(self):
+        mqtt_module, redis_calls, mongo_calls = _load_mqtt_module(
+            {"118": "Asia/Kolkata"}
+        )
+        msg = _Msg("farm/118/sensor_keepalive", {"Device_Id": "sensor-1"})
+
+        mqtt_module.on_message(None, None, msg)
+
+        self.assertEqual(redis_calls, [])
+        self.assertEqual(len(mongo_calls), 1)
+        self.assertEqual(mongo_calls[0]["device_id"], "sensor-1")
+        self.assertEqual(mongo_calls[0]["device_type"], "Keepalive")
+        stored_payload = mongo_calls[0]["payload"]
+        self.assertEqual(stored_payload["type"], "Keepalive")
+        self.assertEqual(stored_payload["farm_id"], "118")
+        self.assertIsInstance(stored_payload["createdAt"], datetime)
+        self.assertEqual(stored_payload["createdAt"].tzinfo, timezone.utc)
+        self.assertIn("Ist_timestamp", stored_payload)
+
+    def test_actuator_keepalive_accepts_device_id_alias(self):
+        mqtt_module, redis_calls, mongo_calls = _load_mqtt_module(
+            {"118": "Asia/Kolkata"}
+        )
+        msg = _Msg("farm/118/actuator_keepalive", {"DeviceID": "actuator-1"})
+
+        mqtt_module.on_message(None, None, msg)
+
+        self.assertEqual(redis_calls, [])
+        self.assertEqual(len(mongo_calls), 1)
+        self.assertEqual(mongo_calls[0]["device_id"], "actuator-1")
+        self.assertEqual(mongo_calls[0]["device_type"], "Keepalive")
+
+    def test_keepalive_without_device_id_is_ignored(self):
+        mqtt_module, redis_calls, mongo_calls = _load_mqtt_module(
+            {"118": "Asia/Kolkata"}
+        )
+        msg = _Msg("farm/118/sensor_keepalive", {"status": "online"})
 
         mqtt_module.on_message(None, None, msg)
 

@@ -82,7 +82,11 @@ def on_message(client, userdata, msg):
             print(f"Farm {farm_id} not allowed")
             return
         
-        device_id = payload.get("Device_Id")
+        device_id = (
+            payload.get("Device_Id")
+            or payload.get("DeviceID")
+            or payload.get("DeviceId")
+        )
     
         if topic_type == "sensor":
             payload["type"] = "sensor"
@@ -132,6 +136,17 @@ def on_message(client, userdata, msg):
         elif topic_type == "api" or topic_type == "SSub":
             payload["farm_id"] = farm_id
             cosmos_dev.store_to_mongo("Backend_API", "APIs", payload)
+            return
+        elif topic_type in {"sensor_keepalive", "actuator_keepalive"}:
+            if not device_id:
+                print("Missing device identifier, skipping keepalive")
+                return
+
+            payload["type"] = "Keepalive"
+            payload["createdAt"] = datetime.now(timezone.utc)
+            payload["Ist_timestamp"] = datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
+            payload["farm_id"] = farm_id
+            cosmos_dev.store_to_mongo(device_id, payload["type"], payload)
             return
         else:
             print(f"Topic type {topic_type} not recognized")
