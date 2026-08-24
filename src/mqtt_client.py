@@ -131,7 +131,10 @@ def on_message(client, userdata, msg):
         #     payload["farm_id"] = farm_id  # Example additional field for robots
 
         elif topic_type == "Info":
-           redis_client.check_and_update_device_config(payload, farm_id)   
+           redis_client.check_and_update_device_config(payload, farm_id)
+           DNs = payload.get("DN")
+           if DNs == "LCD":
+               cosmos_dev.revert_schedule_detail(payload, farm_id, client)
            return 
         elif topic_type == "api" or topic_type == "SSub":
             payload["farm_id"] = farm_id
@@ -173,7 +176,12 @@ def heartbeat():
 
             for farm_id, tz_str in config.ALLOWED_FARMS.items():
                 # Convert UTC to farm's local timezone using pytz
-                farm_tz = pytz.timezone(tz_str)
+                try:
+                    farm_tz = pytz.timezone(str(tz_str).strip())
+                except pytz.UnknownTimeZoneError:
+                    print(f"Invalid timezone for farm {farm_id}: {tz_str!r}")
+                    continue
+
                 local_now = utc_now.astimezone(farm_tz)
 
                 # IST time

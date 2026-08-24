@@ -88,11 +88,15 @@ MONGO_DATABASE_NAME = config.MONGO_DATABASE_NAME
 
 IOT_Device_Data_Database = config.IOT_Device_Data_Database
 IOT_Device_INFO_Database = config.IOT_Device_INFO_Database
+IOT_LCD_SCHEDULE_DATABASE = config.IOT_LCD_SCHEDULE_DATABASE
 
 SENSOR_COLLECTION_NAME = config.MONGO_SENSOR_COLLECTION
 ACTUATOR_COLLECTION_NAME = config.MONGO_ACTUATOR_COLLECTION
 API_COLLECTION_NAME = config.MONGO_API_COLLECTION
 KEEPALIVE_COLLECTION_NAME = config.MONGO_KEEPALIVE_COLLECTION
+LCD_SCHEDULE_COLLECTION_NAME = config.LCD_SCHEDULE_COLLECTION_NAME
+
+
 
 if not all([
     MONGO_URI,
@@ -110,14 +114,15 @@ if not all([
 mongo_client = MongoClient(MONGO_URI)
 IoT_Device_database = mongo_client[IOT_Device_Data_Database]      # this db is for  storing sensor and actuator data in mongodb
 IOT_Device_Info_database = mongo_client[IOT_Device_INFO_Database]   # this database is for storing device info in mongodb
+IOT_LCD_Schedule_database_conn = mongo_client[IOT_LCD_SCHEDULE_DATABASE]  # this database is for storing LCD schedule data in mongodb
 
 
 sensor_collection = IoT_Device_database[SENSOR_COLLECTION_NAME]         # sensor Collection
 actuator_collection = IoT_Device_database[ACTUATOR_COLLECTION_NAME]        # actuator collection
 apis_collection =IoT_Device_database[API_COLLECTION_NAME]             # API collection (using same as sensor for now)
 keepalive_collection = IoT_Device_database[KEEPALIVE_COLLECTION_NAME]   # Keepalive collection
-
-# IoT_Device_Info_collection = IOT_Device_Info_database["Device_Info"]  # Collection for device info      
+lcd_schedule_collection = IOT_LCD_Schedule_database_conn[LCD_SCHEDULE_COLLECTION_NAME]  # LCD Schedule collection
+# IoT_Device_Info_collection = IOT_Device_Info_database["Device_Info"]  # Collection for device info
 
 keepalive_collection.create_index(
     "createdAt",
@@ -184,7 +189,7 @@ def store_to_mongo(device_id: str, device_type: str, payload: dict, retries: int
     except Exception as e:
         print(f"Unexpected Mongo error: {e}")
         return False
-    
+
 
 def updatemongo_config(Device_Id, farm_Id, mqtt_payload):
     global IOT_Device_INFO_Database
@@ -220,3 +225,86 @@ def updatemongo_config(Device_Id, farm_Id, mqtt_payload):
 
     except Exception as e:
         print("❌ Final Error:", e)
+
+
+def revert_schedule_detail(payload, farm_id, mqtt_client):
+    global IOT_Device_INFO_Database
+    try:
+        print("🔍 Reverting schedule detail for farm:", farm_id)
+        rack_id = payload.get("rack_id")
+        recieved_device_id = (
+            payload.get("Device_Id")
+            or payload.get("DeviceID")
+            or payload.get("DeviceId")
+            or payload.get("Device_id")
+        )
+
+        if rack_id is None:
+            print("rack_id missing in payload")
+            return None
+
+        data = lcd_schedule_collection.find_one(
+            {
+                "farm_id": int(farm_id),
+                "rack_id": int(rack_id)
+            },
+            {
+                "_id": 0
+            }
+        )
+
+        if data is None:
+            print(
+                f"No LCD schedule found for "
+                f"farm_id={farm_id}, rack_id={rack_id}"
+            )
+            return None
+
+        Stored_device_id = (
+            data.get("device_ids")
+            or data.get("Device_Id")
+            or data.get("Device_ids")
+            or []
+        )
+        stored_device_ids = {
+            str(device_id).strip().rstrip(",")
+            for device_id in Stored_device_id
+        }
+        valid_flag = str(recieved_device_id).strip().rstrip(",") in stored_device_ids
+        if not valid_flag:
+            print(
+                f"Device_Id {recieved_device_id} not in stored Device_Id list: "
+                f"{sorted(stored_device_ids)}"
+            )
+            return None
+
+        mqtt_payload = {
+            key: value
+            for key, value in data.items()
+            if key not in [
+                "_id",
+                "timezone",
+                "last_updated_at",
+                "device_ids",
+            ]
+        }
+
+        # Optional command
+        mqtt_payload["cmd"] = "newschedule"
+        mqtt_payload["DeviceID"] = data.get("device_ids", [])
+
+        print("MQTT Payload:")
+        print(mqtt_payload)
+
+        # Convert dictionary to JSON
+        mqtt_message = json.dumps(mqtt_payload)
+        mqtt_client.publish(
+            f"farm/{farm_id}/SSub",
+            mqtt_message
+        )
+
+        print("✅ Revert schedule sent to MQTT")
+
+        return True
+    except Exception as e:
+        print("❌ Error occurred while reverting schedule detail:", e)

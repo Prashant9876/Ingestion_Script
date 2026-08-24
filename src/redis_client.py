@@ -58,7 +58,11 @@ def load_allowed_farms():
     FARM_IDS_KEY = f"IoT_Ingestion_script:{REDIS_KEY_PREFIX}"
     farms = redis_client.hgetall(FARM_IDS_KEY)
     # Update the global ALLOWED_FARMS dictionary
-    config.ALLOWED_FARMS = farms
+    config.ALLOWED_FARMS = {
+        str(farm_id).strip(): str(timezone).strip()
+        for farm_id, timezone in farms.items()
+        if str(farm_id).strip() and str(timezone).strip()
+    }
     
     print(f"🔹 ALLOWED_FARMS updated: {config.ALLOWED_FARMS}")
 
