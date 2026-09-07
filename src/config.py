@@ -37,6 +37,7 @@ LCD_SCHEDULE_COLLECTION_NAME = os.getenv("MONGO_LCD_SCHEDULE_COLLECTION")  # New
 IOT_Device_Data_Database = os.getenv("IOT_Device_Data_Database")
 IOT_Device_INFO_Database = os.getenv("IOT_Device_INFO_Database")
 IOT_LCD_SCHEDULE_DATABASE = os.getenv("IOT_LCD_SCHEDULE_DATABASE")  # New environment variable for LCD schedule database
+FAN_SCHEDULE_COLLECTION_NAME = os.getenv("IOT_FAN_SCHEDULE_COLLECTION")  # New environment variable for Fan schedule collection
 #timezone   
 
 TIMEZONE_NAME = os.getenv("TIMEZONE", "UTC")  # default UTC

@@ -95,17 +95,20 @@ ACTUATOR_COLLECTION_NAME = config.MONGO_ACTUATOR_COLLECTION
 API_COLLECTION_NAME = config.MONGO_API_COLLECTION
 KEEPALIVE_COLLECTION_NAME = config.MONGO_KEEPALIVE_COLLECTION
 LCD_SCHEDULE_COLLECTION_NAME = config.LCD_SCHEDULE_COLLECTION_NAME
-
+FAN_SCHEDULE_COLLECTION_NAME = config.FAN_SCHEDULE_COLLECTION_NAME
 
 
 if not all([
     MONGO_URI,
     IOT_Device_Data_Database,
     IOT_Device_INFO_Database,
+    IOT_LCD_SCHEDULE_DATABASE,
     SENSOR_COLLECTION_NAME,
     ACTUATOR_COLLECTION_NAME,
     API_COLLECTION_NAME,
     KEEPALIVE_COLLECTION_NAME,
+    LCD_SCHEDULE_COLLECTION_NAME,
+    FAN_SCHEDULE_COLLECTION_NAME,
 ]):
     raise RuntimeError("Mongo ENV variables missing")
 
@@ -122,6 +125,7 @@ actuator_collection = IoT_Device_database[ACTUATOR_COLLECTION_NAME]        # act
 apis_collection =IoT_Device_database[API_COLLECTION_NAME]             # API collection (using same as sensor for now)
 keepalive_collection = IoT_Device_database[KEEPALIVE_COLLECTION_NAME]   # Keepalive collection
 lcd_schedule_collection = IOT_LCD_Schedule_database_conn[LCD_SCHEDULE_COLLECTION_NAME]  # LCD Schedule collection
+fan_schedule_collection = IOT_LCD_Schedule_database_conn[FAN_SCHEDULE_COLLECTION_NAME]  # Fan Schedule collection
 # IoT_Device_Info_collection = IOT_Device_Info_database["Device_Info"]  # Collection for device info
 
 keepalive_collection.create_index(
@@ -308,3 +312,86 @@ def revert_schedule_detail(payload, farm_id, mqtt_client):
         return True
     except Exception as e:
         print("❌ Error occurred while reverting schedule detail:", e)
+
+
+
+def revert_Fan_schedule_detail(payload, farm_id, mqtt_client):
+    global IOT_Device_INFO_Database
+    try:
+        print("🔍 Reverting Fan schedule detail for farm:", farm_id)
+        DN = payload.get("DN")
+        recieved_device_id = (
+            payload.get("Device_Id")
+            or payload.get("DeviceID")
+            or payload.get("DeviceId")
+            or payload.get("Device_id")
+        )
+
+
+
+        data = fan_schedule_collection.find_one(
+            {
+                "farm_id": int(farm_id),
+                "DN": str(DN).strip()
+
+            },
+            {
+                "_id": 0
+            }
+        )
+
+        if data is None:
+            print(
+                f"No Fan schedule found for "
+                f"farm_id={farm_id}, DN={DN}"
+            )
+            return None
+
+        Stored_device_id = (
+            data.get("device_ids")
+            or data.get("Device_Id")
+            or data.get("Device_ids")
+            or []
+        )
+        stored_device_ids = {
+            str(device_id).strip().rstrip(",")
+            for device_id in Stored_device_id
+        }
+        valid_flag = str(recieved_device_id).strip().rstrip(",") in stored_device_ids
+        if not valid_flag:
+            print(
+                f"Device_Id {recieved_device_id} not in stored Device_Id list: "
+                f"{sorted(stored_device_ids)}"
+            )
+            return None
+
+        mqtt_payload = {
+            key: value
+            for key, value in data.items()
+            if key not in [
+                "_id",
+                "timezone",
+                "last_updated_at",
+                "device_ids",
+            ]
+        }
+
+        # Optional command
+        mqtt_payload["cmd"] = "newschedule"
+        mqtt_payload["DeviceID"] = data.get("device_ids", [])
+
+        print("MQTT Payload:")
+        print(mqtt_payload)
+
+        # Convert dictionary to JSON
+        mqtt_message = json.dumps(mqtt_payload)
+        mqtt_client.publish(
+            f"farm/{farm_id}/SSub",
+            mqtt_message
+        )
+
+        print("✅ Revert Fan schedule sent to MQTT")
+
+        return True
+    except Exception as e:
+        print("❌ Error occurred while reverting Fan schedule detail:", e)

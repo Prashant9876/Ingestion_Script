@@ -7,10 +7,10 @@ from src import redis_client
 from src import cosmos_dev
 from datetime import datetime, timezone ,timedelta
 from src import config
-from zoneinfo import ZoneInfo 
-import pytz 
+from zoneinfo import ZoneInfo
+import pytz
 
-IST_OFFSET = "Asia/Kolkata" # Indian Standard Time offset as this fsarm. is running in india 
+IST_OFFSET = "Asia/Kolkata" # Indian Standard Time offset as this fsarm. is running in india
 
 
 # ========================
@@ -31,7 +31,7 @@ PING_INTERVAL = 120  # seconds
 
 TIMEZONE_NAME = config.TIMEZONE_NAME # default UTC
 
-FARM_IDS_RELOAD_TIME = config.REDIS_FARMIDS_RSET_TIME  # seconds, how often to refresh allowed farm IDs from Redis  
+FARM_IDS_RELOAD_TIME = config.REDIS_FARMIDS_RSET_TIME  # seconds, how often to refresh allowed farm IDs from Redis
 
 last_refresh = 0
 
@@ -74,20 +74,20 @@ def on_message(client, userdata, msg):
         if len(topic_parts) < 3:
             print("Invalid topic format:", msg.topic)
             return
-        
+
         farm_id = topic_parts[1]
         topic_type = topic_parts[2]
 
         if farm_id not in config.ALLOWED_FARMS:
             print(f"Farm {farm_id} not allowed")
             return
-        
+
         device_id = (
             payload.get("Device_Id")
             or payload.get("DeviceID")
             or payload.get("DeviceId")
         )
-    
+
         if topic_type == "sensor":
             payload["type"] = "sensor"
             payload["timestamp"] = datetime.now(timezone.utc).isoformat()
@@ -111,11 +111,11 @@ def on_message(client, userdata, msg):
                 EC_val= payload.get("EC Sensor")
                 ph_val = payload.get("pH Sensor")
                 cases = payload.get("cases")
-                
+
                 if EC_val == 0 or ph_val == 0 :
                     print(f"⚠️ Invalid sensor data from {device_id} in farm {farm_id}. EC: {EC_val}, pH: {ph_val}")
                     return
-                  
+
                 if cases in ["before", "after"]:
                         cosmos_dev.store_to_mongo(device_id, payload["type"], payload)
                         return
@@ -131,11 +131,15 @@ def on_message(client, userdata, msg):
         #     payload["farm_id"] = farm_id  # Example additional field for robots
 
         elif topic_type == "Info":
-           redis_client.check_and_update_device_config(payload, farm_id)
-           DNs = payload.get("DN")
-           if DNs == "LCD":
-               cosmos_dev.revert_schedule_detail(payload, farm_id, client)
-           return 
+            redis_client.check_and_update_device_config(payload, farm_id)
+            DNs = payload.get("DN")
+            if DNs == "LCD":
+                cosmos_dev.revert_schedule_detail(payload, farm_id, client)
+                return
+            if DNs == "AFC" or DNs == "FNC":
+                cosmos_dev.revert_Fan_schedule_detail(payload, farm_id, client)
+                return
+            return
         elif topic_type == "api" or topic_type == "SSub":
             payload["farm_id"] = farm_id
             cosmos_dev.store_to_mongo("Backend_API", "APIs", payload)
@@ -154,14 +158,14 @@ def on_message(client, userdata, msg):
         else:
             print(f"Topic type {topic_type} not recognized")
             return
-        
+
         redis_data = redis_client.store_device_data(device_id, payload, type=payload["type"], farm_Id=farm_id)
         cosmos_dev.store_to_mongo(device_id, payload["type"], payload)
-    
+
     except Exception as e:
         print("Topic parsing error:", e)
     return
-    
+
 
 # ========================
 # HEARTBEAT THREAD
@@ -203,7 +207,7 @@ def heartbeat():
 
         else:
             print("⚠️ No allowed farms or MQTT not connected. Heartbeat skipped.")
-        
+
         now = time.time()
         if now - last_refresh >= FARM_IDS_RELOAD_TIME:
             try:
@@ -211,7 +215,7 @@ def heartbeat():
             except Exception as e:
                 print("Error refreshing farms:", e)
             last_refresh = now
-        
+
         time.sleep(PING_INTERVAL)
 
 # ========================
@@ -243,8 +247,8 @@ def start_mqtt():
         raise SystemExit(1)
 
     # Start heartbeat thread
-    
-    threading.Thread(target=heartbeat, daemon=True).start() 
+
+    threading.Thread(target=heartbeat, daemon=True).start()
 
     print("🚀 MQTT client started with auto-reconnect & heartbeat")
     mqtt_client.loop_forever()

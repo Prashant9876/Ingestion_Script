@@ -14,6 +14,9 @@ def _load_mqtt_module(allowed_farms):
 
     redis_calls = []
     mongo_calls = []
+    config_calls = []
+    lcd_revert_calls = []
+    fan_revert_calls = []
 
     fake_redis = types.ModuleType("src.redis_client")
 
@@ -31,8 +34,12 @@ def _load_mqtt_module(allowed_farms):
     def load_allowed_farms():
         return None
 
+    def check_and_update_device_config(payload, farm_id):
+        config_calls.append({"payload": payload, "farm_id": farm_id})
+
     fake_redis.store_device_data = store_device_data
     fake_redis.load_allowed_farms = load_allowed_farms
+    fake_redis.check_and_update_device_config = check_and_update_device_config
 
     fake_cosmos = types.ModuleType("src.cosmos_dev")
 
@@ -44,12 +51,27 @@ def _load_mqtt_module(allowed_farms):
 
     fake_cosmos.store_to_mongo = store_to_mongo
 
+    def revert_schedule_detail(payload, farm_id, mqtt_client):
+        lcd_revert_calls.append(
+            {"payload": payload, "farm_id": farm_id, "mqtt_client": mqtt_client}
+        )
+        return True
+
+    def revert_Fan_schedule_detail(payload, farm_id, mqtt_client):
+        fan_revert_calls.append(
+            {"payload": payload, "farm_id": farm_id, "mqtt_client": mqtt_client}
+        )
+        return True
+
+    fake_cosmos.revert_schedule_detail = revert_schedule_detail
+    fake_cosmos.revert_Fan_schedule_detail = revert_Fan_schedule_detail
+
     sys.modules["src.redis_client"] = fake_redis
     sys.modules["src.cosmos_dev"] = fake_cosmos
 
     mqtt_module = importlib.import_module("src.mqtt_client")
     mqtt_module.config.ALLOWED_FARMS = allowed_farms
-    return mqtt_module, redis_calls, mongo_calls
+    return mqtt_module, redis_calls, mongo_calls, config_calls, lcd_revert_calls, fan_revert_calls
 
 
 class _Msg:
@@ -58,9 +80,17 @@ class _Msg:
         self.payload = json.dumps(payload_dict).encode()
 
 
+class _MqttClient:
+    def __init__(self):
+        self.published = []
+
+    def publish(self, topic, payload, qos=0):
+        self.published.append({"topic": topic, "payload": payload, "qos": qos})
+
+
 class MqttClientTests(unittest.TestCase):
     def test_on_message_sensor_stores_to_redis_and_mongo(self):
-        mqtt_module, redis_calls, mongo_calls = _load_mqtt_module(
+        mqtt_module, redis_calls, mongo_calls, *_ = _load_mqtt_module(
             {"118": "Asia/Kolkata"}
         )
         msg = _Msg("farm/118/sensor", {"Device_Id": "dev-1", "temp": 27})
@@ -78,7 +108,7 @@ class MqttClientTests(unittest.TestCase):
         self.assertEqual(mongo_calls[0]["device_type"], "sensor")
 
     def test_on_message_fertigation_maps_to_actuator(self):
-        mqtt_module, redis_calls, mongo_calls = _load_mqtt_module(
+        mqtt_module, redis_calls, mongo_calls, *_ = _load_mqtt_module(
             {"118": "Asia/Kolkata"}
         )
         msg = _Msg("farm/118/fertigation", {"Device_Id": "dev-2", "state": "on"})
@@ -92,7 +122,7 @@ class MqttClientTests(unittest.TestCase):
         self.assertEqual(mongo_calls[0]["device_type"], "actuator")
 
     def test_on_message_ignores_unallowed_farm(self):
-        mqtt_module, redis_calls, mongo_calls = _load_mqtt_module({"999": "UTC"})
+        mqtt_module, redis_calls, mongo_calls, *_ = _load_mqtt_module({"999": "UTC"})
         msg = _Msg("farm/118/sensor", {"Device_Id": "dev-3", "temp": 30})
 
         mqtt_module.on_message(None, None, msg)
@@ -101,7 +131,7 @@ class MqttClientTests(unittest.TestCase):
         self.assertEqual(mongo_calls, [])
 
     def test_on_message_ignores_invalid_topic(self):
-        mqtt_module, redis_calls, mongo_calls = _load_mqtt_module({"118": "UTC"})
+        mqtt_module, redis_calls, mongo_calls, *_ = _load_mqtt_module({"118": "UTC"})
         msg = _Msg("farm/118", {"Device_Id": "dev-4"})
 
         mqtt_module.on_message(None, None, msg)
@@ -110,7 +140,7 @@ class MqttClientTests(unittest.TestCase):
         self.assertEqual(mongo_calls, [])
 
     def test_sensor_keepalive_stores_once_in_mongo_with_ttl_datetime(self):
-        mqtt_module, redis_calls, mongo_calls = _load_mqtt_module(
+        mqtt_module, redis_calls, mongo_calls, *_ = _load_mqtt_module(
             {"118": "Asia/Kolkata"}
         )
         msg = _Msg("farm/118/sensor_keepalive", {"Device_Id": "sensor-1"})
@@ -129,7 +159,7 @@ class MqttClientTests(unittest.TestCase):
         self.assertIn("Ist_timestamp", stored_payload)
 
     def test_actuator_keepalive_accepts_device_id_alias(self):
-        mqtt_module, redis_calls, mongo_calls = _load_mqtt_module(
+        mqtt_module, redis_calls, mongo_calls, *_ = _load_mqtt_module(
             {"118": "Asia/Kolkata"}
         )
         msg = _Msg("farm/118/actuator_keepalive", {"DeviceID": "actuator-1"})
@@ -142,7 +172,7 @@ class MqttClientTests(unittest.TestCase):
         self.assertEqual(mongo_calls[0]["device_type"], "Keepalive")
 
     def test_keepalive_without_device_id_is_ignored(self):
-        mqtt_module, redis_calls, mongo_calls = _load_mqtt_module(
+        mqtt_module, redis_calls, mongo_calls, *_ = _load_mqtt_module(
             {"118": "Asia/Kolkata"}
         )
         msg = _Msg("farm/118/sensor_keepalive", {"status": "online"})
@@ -151,6 +181,88 @@ class MqttClientTests(unittest.TestCase):
 
         self.assertEqual(redis_calls, [])
         self.assertEqual(mongo_calls, [])
+
+    def test_info_fnc_reverts_fan_schedule(self):
+        (
+            mqtt_module,
+            redis_calls,
+            mongo_calls,
+            config_calls,
+            lcd_revert_calls,
+            fan_revert_calls,
+        ) = _load_mqtt_module({"211": "Australia/Perth"})
+        client = _MqttClient()
+        payload = {
+            "DN": "FNC",
+            "Device_id": "IFFNC2110000001",
+            "rack_id": 1,
+        }
+        msg = _Msg("farm/211/Info", payload)
+
+        mqtt_module.on_message(client, None, msg)
+
+        self.assertEqual(len(config_calls), 1)
+        self.assertEqual(config_calls[0]["farm_id"], "211")
+        self.assertEqual(redis_calls, [])
+        self.assertEqual(mongo_calls, [])
+        self.assertEqual(lcd_revert_calls, [])
+        self.assertEqual(len(fan_revert_calls), 1)
+        self.assertEqual(fan_revert_calls[0]["payload"], payload)
+        self.assertEqual(fan_revert_calls[0]["farm_id"], "211")
+        self.assertIs(fan_revert_calls[0]["mqtt_client"], client)
+
+    def test_info_afc_reverts_fan_schedule(self):
+        (
+            mqtt_module,
+            redis_calls,
+            mongo_calls,
+            config_calls,
+            lcd_revert_calls,
+            fan_revert_calls,
+        ) = _load_mqtt_module({"211": "Australia/Perth"})
+        client = _MqttClient()
+        payload = {
+            "DN": "AFC",
+            "Device_Id": "IFFNC2110000001",
+            "rack_id": 1,
+        }
+        msg = _Msg("farm/211/Info", payload)
+
+        mqtt_module.on_message(client, None, msg)
+
+        self.assertEqual(len(config_calls), 1)
+        self.assertEqual(redis_calls, [])
+        self.assertEqual(mongo_calls, [])
+        self.assertEqual(lcd_revert_calls, [])
+        self.assertEqual(len(fan_revert_calls), 1)
+        self.assertEqual(fan_revert_calls[0]["payload"], payload)
+        self.assertEqual(fan_revert_calls[0]["farm_id"], "211")
+        self.assertIs(fan_revert_calls[0]["mqtt_client"], client)
+
+    def test_info_other_dn_only_updates_config(self):
+        (
+            mqtt_module,
+            redis_calls,
+            mongo_calls,
+            config_calls,
+            lcd_revert_calls,
+            fan_revert_calls,
+        ) = _load_mqtt_module({"211": "Australia/Perth"})
+        client = _MqttClient()
+        payload = {
+            "DN": "IDC",
+            "Device_Id": "IFIDC2110000001",
+        }
+        msg = _Msg("farm/211/Info", payload)
+
+        mqtt_module.on_message(client, None, msg)
+
+        self.assertEqual(len(config_calls), 1)
+        self.assertEqual(config_calls[0]["payload"], payload)
+        self.assertEqual(redis_calls, [])
+        self.assertEqual(mongo_calls, [])
+        self.assertEqual(lcd_revert_calls, [])
+        self.assertEqual(fan_revert_calls, [])
 
 
 if __name__ == "__main__":
