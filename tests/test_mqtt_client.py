@@ -121,6 +121,41 @@ class MqttClientTests(unittest.TestCase):
         self.assertEqual(len(mongo_calls), 1)
         self.assertEqual(mongo_calls[0]["device_type"], "actuator")
 
+    def test_sensor_preserves_device_timestamp(self):
+        mqtt_module, redis_calls, mongo_calls, *_ = _load_mqtt_module(
+            {"118": "Asia/Kolkata"}
+        )
+        payload = {
+            "Device_Id": "dev-1",
+            "timestamp": "2026-10-22T08:00:00Z",
+            "Ist_timestamp": "2026-10-22T13:30:00+05:30",
+        }
+        msg = _Msg("farm/118/sensor", payload)
+
+        mqtt_module.on_message(None, None, msg)
+
+        stored_payload = redis_calls[0]["payload"]
+        self.assertEqual(stored_payload["timestamp"], payload["timestamp"])
+        self.assertEqual(stored_payload["Ist_timestamp"], payload["Ist_timestamp"])
+        self.assertEqual(mongo_calls[0]["payload"]["timestamp"], payload["timestamp"])
+
+    def test_actuator_preserves_device_timestamp(self):
+        mqtt_module, redis_calls, mongo_calls, *_ = _load_mqtt_module(
+            {"118": "Asia/Kolkata"}
+        )
+        payload = {
+            "Device_Id": "dev-2",
+            "timestamp": "2026-10-22T08:00:00Z",
+        }
+        msg = _Msg("farm/118/actuator", payload)
+
+        mqtt_module.on_message(None, None, msg)
+
+        stored_payload = redis_calls[0]["payload"]
+        self.assertEqual(stored_payload["timestamp"], payload["timestamp"])
+        self.assertNotIn("Ist_timestamp", stored_payload)
+        self.assertEqual(mongo_calls[0]["payload"]["timestamp"], payload["timestamp"])
+
     def test_on_message_ignores_unallowed_farm(self):
         mqtt_module, redis_calls, mongo_calls, *_ = _load_mqtt_module({"999": "UTC"})
         msg = _Msg("farm/118/sensor", {"Device_Id": "dev-3", "temp": 30})

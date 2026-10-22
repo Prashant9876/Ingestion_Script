@@ -38,6 +38,16 @@ last_refresh = 0
 mqtt_client = None
 connected = False
 
+
+def add_timestamps_if_missing(payload):
+    """Add ingestion timestamps only when the device did not provide one."""
+    if "timestamp" in payload or "Ist_timestamp" in payload:
+        return
+
+    payload["timestamp"] = datetime.now(timezone.utc).isoformat()
+    payload["Ist_timestamp"] = datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
+
+
 # ========================
 # MQTT CALLBACKS
 # ========================
@@ -90,8 +100,7 @@ def on_message(client, userdata, msg):
 
         if topic_type == "sensor":
             payload["type"] = "sensor"
-            payload["timestamp"] = datetime.now(timezone.utc).isoformat()
-            payload["Ist_timestamp"] = datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
+            add_timestamps_if_missing(payload)
             payload["farm_id"] = farm_id
 
             if farm_id == "120" and device_id == "IFTHC1200000001":
@@ -122,8 +131,7 @@ def on_message(client, userdata, msg):
 
         elif topic_type in {"actuator", "irrigation", "fertigation"}:
             payload["type"] = "actuator"
-            payload["timestamp"] = datetime.now(timezone.utc).isoformat()
-            payload["Ist_timestamp"] = datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
+            add_timestamps_if_missing(payload)
             payload["farm_id"] = farm_id  # Example additional field for actuators
         # elif topic_type == "robot":
         #     payload["type"] = "robot"
