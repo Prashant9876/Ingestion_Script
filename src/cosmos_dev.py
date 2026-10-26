@@ -327,18 +327,15 @@ def revert_Fan_schedule_detail(payload, farm_id, mqtt_client):
             or payload.get("Device_id")
         )
 
+        schedule_dn = str(DN).strip()
+        query = {"farm_id": int(farm_id), "DN": schedule_dn}
+        data = fan_schedule_collection.find_one(query, {"_id": 0})
 
-
-        data = fan_schedule_collection.find_one(
-            {
-                "farm_id": int(farm_id),
-                "DN": str(DN).strip()
-
-            },
-            {
-                "_id": 0
-            }
-        )
+        # AFC and FNC use the same fan schedule when only one DN is stored.
+        if data is None and schedule_dn in {"AFC", "FNC"}:
+            alternate_dn = "FNC" if schedule_dn == "AFC" else "AFC"
+            query["DN"] = alternate_dn
+            data = fan_schedule_collection.find_one(query, {"_id": 0})
 
         if data is None:
             print(

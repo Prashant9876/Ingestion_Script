@@ -9,6 +9,7 @@ from datetime import datetime, timezone ,timedelta
 from src import config
 from zoneinfo import ZoneInfo
 import pytz
+import re
 
 IST_OFFSET = "Asia/Kolkata" # Indian Standard Time offset as this fsarm. is running in india
 
@@ -103,8 +104,9 @@ def on_message(client, userdata, msg):
             add_timestamps_if_missing(payload)
             payload["farm_id"] = farm_id
 
-            if farm_id == "120" and device_id == "IFTHC1200000001":
+            if farm_id in {"120", "121"} and device_id in {"IFTHC1200000001", "IFTHC1210000001"}:
                 humidity = payload.get("Humidity")
+                Co2 = payload.get("CO2")
 
                 if isinstance(humidity, (int, float)):
                     payload["Humidity"] = round(humidity + 30, 2)
@@ -112,11 +114,15 @@ def on_message(client, userdata, msg):
                         f"Humidity corrected: {humidity} → "
                         f"{payload['Humidity']}"
                     )
+
+                if isinstance(Co2, (int, float)):
+                    # payload["CO2"] = round(Co2/10,0)
+                    print(f"CO2 corrected: {Co2} → {payload['CO2']}")
                 else:
                     print("Humidity key is missing or has an invalid value")
 
-
-            if (farm_id == "120" and device_id == "IFNSD1200000001" ):
+    
+            if (farm_id in {"120", "121"} and device_id in {"IFNSD1200000001", "IFNSD1210000001"} ):
                 EC_val= payload.get("EC Sensor")
                 ph_val = payload.get("pH Sensor")
                 cases = payload.get("cases")
@@ -132,6 +138,19 @@ def on_message(client, userdata, msg):
         elif topic_type in {"actuator", "irrigation", "fertigation"}:
             payload["type"] = "actuator"
             add_timestamps_if_missing(payload)
+            # if farm_id in("120", "121"):
+            #     for key in list(payload):
+            #     # Match fan1, fan2, fan3, etc.
+            #         if re.fullmatch(r"fan\d+", key):
+            #             new_key = key.replace("fan", "fog", 1)
+
+            #             # Avoid overwriting a fog key that already exists.
+            #             if new_key in payload:
+            #                 raise ValueError(f"Cannot rename {key}: {new_key} already exists")
+
+            #             payload[new_key] = payload.pop(key)
+
+
             payload["farm_id"] = farm_id  # Example additional field for actuators
         # elif topic_type == "robot":
         #     payload["type"] = "robot"
