@@ -166,6 +166,8 @@ def on_message(client, userdata, msg):
             if DNs == "AFC" or DNs == "FNC":
                 cosmos_dev.revert_Fan_schedule_detail(payload, farm_id, client)
                 return
+            if DNs == "FPC":
+                cosmos_dev.revert_Fanpad_schedule_detail(payload, farm_id, client)
             return
         elif topic_type == "api" or topic_type == "SSub":
             payload["farm_id"] = farm_id

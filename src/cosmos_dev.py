@@ -96,6 +96,7 @@ API_COLLECTION_NAME = config.MONGO_API_COLLECTION
 KEEPALIVE_COLLECTION_NAME = config.MONGO_KEEPALIVE_COLLECTION
 LCD_SCHEDULE_COLLECTION_NAME = config.LCD_SCHEDULE_COLLECTION_NAME
 FAN_SCHEDULE_COLLECTION_NAME = config.FAN_SCHEDULE_COLLECTION_NAME
+FANPAD_SCHEDULE_COLLECTION_NAME = config.FANPAD_SCHEDULE_COLLECTION_NAME
 
 
 if not all([
@@ -127,7 +128,7 @@ keepalive_collection = IoT_Device_database[KEEPALIVE_COLLECTION_NAME]   # Keepal
 lcd_schedule_collection = IOT_LCD_Schedule_database_conn[LCD_SCHEDULE_COLLECTION_NAME]  # LCD Schedule collection
 fan_schedule_collection = IOT_LCD_Schedule_database_conn[FAN_SCHEDULE_COLLECTION_NAME]  # Fan Schedule collection
 # IoT_Device_Info_collection = IOT_Device_Info_database["Device_Info"]  # Collection for device info
-
+fanpad_schedule_collection = IOT_LCD_Schedule_database_conn[FANPAD_SCHEDULE_COLLECTION_NAME]  # Fan Pad Schedule collection
 keepalive_collection.create_index(
     "createdAt",
     expireAfterSeconds=3 * 24 * 60 * 60
@@ -392,3 +393,92 @@ def revert_Fan_schedule_detail(payload, farm_id, mqtt_client):
         return True
     except Exception as e:
         print("❌ Error occurred while reverting Fan schedule detail:", e)
+
+
+def revert_Fanpad_schedule_detail(payload, farm_id, mqtt_client):
+    global IOT_Device_INFO_Database
+
+    try:
+        print("🔍 Reverting Fan Pad schedule detail for farm:", farm_id)
+
+        received_device_id = (
+            payload.get("Device_Id")
+            or payload.get("DeviceID")
+            or payload.get("DeviceId")
+            or payload.get("Device_id")
+        )
+
+        data = fanpad_schedule_collection.find_one(
+            {
+                "farm_id": int(farm_id),
+                "DN": "FPC"
+            },
+            {
+                "_id": 0
+            }
+        )
+
+        if data is None:
+            print(f"No Fan Pad configuration found for farm_id={farm_id}")
+            return None
+
+        # Normalize device_ids safely
+        stored_device_ids_raw = data.get("device_ids", [])
+
+        if isinstance(stored_device_ids_raw, str):
+            stored_device_ids_raw = [stored_device_ids_raw]
+
+        stored_device_ids = {
+            str(device_id).strip().rstrip(",")
+            for device_id in stored_device_ids_raw
+        }
+
+        if str(received_device_id).strip().rstrip(",") not in stored_device_ids:
+            print(
+                f"Device_Id {received_device_id} not in stored device list: "
+                f"{sorted(stored_device_ids)}"
+            )
+            return None
+
+        # Base MQTT payload
+        mqtt_payload = {
+            "farm_id": int(farm_id),
+            "DeviceID": list(stored_device_ids),
+            "cmd": "newschedule"
+        }
+
+        # Create rack1, rack2, rack3 ... dynamically
+        rack_configs = data.get("rack_configs", [])
+
+        for rack_config in rack_configs:
+            rack_id = rack_config.get("rack_id")
+
+            if rack_id is None:
+                print("⚠ Skipping rack configuration: rack_id missing")
+                continue
+
+            auto_config = rack_config.get("auto_config", {})
+
+            mqtt_payload[f"rack{rack_id}"] = [
+                rack_config.get("mode", 1),
+                auto_config.get("fan_off_temp_c", 0),
+                auto_config.get("half_fan_on_temp_c", 0),
+                auto_config.get("all_fans_on_temp_c", 0)
+            ]
+
+        print("MQTT Payload:")
+        print(mqtt_payload)
+
+        mqtt_message = json.dumps(mqtt_payload)
+
+        mqtt_client.publish(
+            f"farm/{farm_id}/SSub",
+            mqtt_message
+        )
+
+        print("✅ Fan Pad configuration sent to MQTT")
+        return True
+
+    except Exception as e:
+        print("❌ Error while reverting Fan Pad configuration:", e)
+        return None
