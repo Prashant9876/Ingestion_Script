@@ -463,7 +463,9 @@ def revert_Fanpad_schedule_detail(payload, farm_id, mqtt_client):
                 rack_config.get("mode", 1),
                 auto_config.get("fan_off_temp_c", 0),
                 auto_config.get("half_fan_on_temp_c", 0),
-                auto_config.get("all_fans_on_temp_c", 0)
+                auto_config.get("all_fans_on_temp_c", 0),
+                auto_config.get("fan_pad ON Humidity", 0),
+                auto_config.get("fan_pad OFF Humidity", 0),
             ]
 
         print("MQTT Payload:")
