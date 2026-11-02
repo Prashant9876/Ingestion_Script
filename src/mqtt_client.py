@@ -104,9 +104,14 @@ def on_message(client, userdata, msg):
             add_timestamps_if_missing(payload)
             payload["farm_id"] = farm_id
 
-            if farm_id in {"120", "121"} and device_id in {"IFTHC1200000001", "IFTHC1210000001"}:
+            if farm_id in {"120", "121"} and device_id in {"IFTHC1200000001", "IFTHC1210000001", "IFWLD1200000001", "IFWLD1210000001"}:
                 humidity = payload.get("Humidity")
                 Co2 = payload.get("CO2")
+
+                if device_id in {"IFWLD1200000001", "IFWLD1210000001"}:
+                    Water_Level = payload.get("WaterLevel")
+                    if Water_Level < 0:
+                        return  # Skip processing if WaterLevel is negative
 
                 if isinstance(humidity, (int, float)):
                     payload["Humidity"] = round(humidity + 30, 2)
