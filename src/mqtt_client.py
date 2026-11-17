@@ -38,6 +38,8 @@ last_refresh = 0
 
 mqtt_client = None
 connected = False
+active_farms = set()
+subscription_lock = threading.Lock()
 
 
 def add_timestamps_if_missing(payload):
@@ -49,6 +51,36 @@ def add_timestamps_if_missing(payload):
     payload["Ist_timestamp"] = datetime.now(ZoneInfo("Asia/Kolkata")).isoformat()
 
 
+def sync_farm_subscriptions(client):
+    """Make MQTT subscriptions match the farm IDs currently loaded from Redis."""
+    if client is None:
+        return
+
+    desired_farms = set(config.ALLOWED_FARMS.keys())
+
+    with subscription_lock:
+        farms_to_subscribe = desired_farms - active_farms
+        farms_to_unsubscribe = active_farms - desired_farms
+
+        for farm_id in farms_to_subscribe:
+            topic = f"farm/{farm_id}/#"
+            result, _ = client.subscribe(topic)
+            if result == mqtt.MQTT_ERR_SUCCESS:
+                active_farms.add(farm_id)
+                print("Subscribed to:", topic)
+            else:
+                print("Failed to subscribe:", topic)
+
+        for farm_id in farms_to_unsubscribe:
+            topic = f"farm/{farm_id}/#"
+            result, _ = client.unsubscribe(topic)
+            if result == mqtt.MQTT_ERR_SUCCESS:
+                active_farms.remove(farm_id)
+                print("Unsubscribed from:", topic)
+            else:
+                print("Failed to unsubscribe:", topic)
+
+
 # ========================
 # MQTT CALLBACKS
 # ========================
@@ -58,14 +90,10 @@ def on_connect(client, userdata, flags, rc):
     if rc == 0:
         connected = True
         print("MQTT connected")
-        # Subscribe to all allowed farms
-        if config.ALLOWED_FARMS:  # make sure it's not empty
-            for farm_id in config.ALLOWED_FARMS.keys():  # iterate over dict keys (farm IDs)
-                topic = f"farm/{farm_id}/#"
-                client.subscribe(topic)
-                print("Subscribed to:", topic)
-        else:
-            print("⚠️ ALLOWED_FARMS is empty. No subscriptions made.")
+        # Reapply all subscriptions because a new MQTT connection has been made.
+        with subscription_lock:
+            active_farms.clear()
+        sync_farm_subscriptions(client)
     else:
         print(" MQTT connection failed with code:", rc)
 
@@ -246,6 +274,8 @@ def heartbeat():
         if now - last_refresh >= FARM_IDS_RELOAD_TIME:
             try:
                 redis_client.load_allowed_farms()
+                if connected:
+                    sync_farm_subscriptions(mqtt_client)
             except Exception as e:
                 print("Error refreshing farms:", e)
             last_refresh = now

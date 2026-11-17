@@ -83,12 +83,51 @@ class _Msg:
 class _MqttClient:
     def __init__(self):
         self.published = []
+        self.subscribed = []
+        self.unsubscribed = []
 
     def publish(self, topic, payload, qos=0):
         self.published.append({"topic": topic, "payload": payload, "qos": qos})
 
+    def subscribe(self, topic):
+        self.subscribed.append(topic)
+        return 0, len(self.subscribed)
+
+    def unsubscribe(self, topic):
+        self.unsubscribed.append(topic)
+        return 0, len(self.unsubscribed)
+
 
 class MqttClientTests(unittest.TestCase):
+    def test_sync_farm_subscriptions_adds_and_removes_farms(self):
+        mqtt_module, *_ = _load_mqtt_module({"118": "Asia/Kolkata"})
+        client = _MqttClient()
+
+        mqtt_module.sync_farm_subscriptions(client)
+
+        self.assertEqual(client.subscribed, ["farm/118/#"])
+        self.assertEqual(mqtt_module.active_farms, {"118"})
+
+        mqtt_module.config.ALLOWED_FARMS = {"121": "Asia/Kolkata"}
+        mqtt_module.sync_farm_subscriptions(client)
+
+        self.assertEqual(client.subscribed, ["farm/118/#", "farm/121/#"])
+        self.assertEqual(client.unsubscribed, ["farm/118/#"])
+        self.assertEqual(mqtt_module.active_farms, {"121"})
+
+    def test_on_connect_resubscribes_all_current_farms(self):
+        mqtt_module, *_ = _load_mqtt_module(
+            {"118": "Asia/Kolkata", "293": "Australia/Perth"}
+        )
+        mqtt_module.active_farms.add("old-farm")
+        client = _MqttClient()
+
+        mqtt_module.on_connect(client, None, None, 0)
+
+        self.assertTrue(mqtt_module.connected)
+        self.assertEqual(set(client.subscribed), {"farm/118/#", "farm/293/#"})
+        self.assertEqual(mqtt_module.active_farms, {"118", "293"})
+
     def test_on_message_sensor_stores_to_redis_and_mongo(self):
         mqtt_module, redis_calls, mongo_calls, *_ = _load_mqtt_module(
             {"118": "Asia/Kolkata"}
