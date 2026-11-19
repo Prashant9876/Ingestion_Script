@@ -171,17 +171,17 @@ def on_message(client, userdata, msg):
         elif topic_type in {"actuator", "irrigation", "fertigation"}:
             payload["type"] = "actuator"
             add_timestamps_if_missing(payload)
-            # if farm_id in("120", "121"):
-            #     for key in list(payload):
-            #     # Match fan1, fan2, fan3, etc.
-            #         if re.fullmatch(r"fan\d+", key):
-            #             new_key = key.replace("fan", "fog", 1)
+            if farm_id in("120", "121"):
+                for key in list(payload):
+                # Match fan1, fan2, fan3, etc.
+                    if re.fullmatch(r"fan\d+", key):
+                        new_key = key.replace("fan", "fog", 1)
 
-            #             # Avoid overwriting a fog key that already exists.
-            #             if new_key in payload:
-            #                 raise ValueError(f"Cannot rename {key}: {new_key} already exists")
+                        # Avoid overwriting a fog key that already exists.
+                        if new_key in payload:
+                            raise ValueError(f"Cannot rename {key}: {new_key} already exists")
 
-            #             payload[new_key] = payload.pop(key)
+                        payload[new_key] = payload.pop(key)
 
 
             payload["farm_id"] = farm_id  # Example additional field for actuators
